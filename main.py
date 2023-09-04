@@ -49,6 +49,8 @@ def extract_topic_words_from_text(_mytext: str):
                                     random_state=100)
     lda.fit(tf)
     tf_feature_names = tf_vectorizer.get_feature_names_out()
+
+
     for topic_index, topic in enumerate(lda.components_):
         return [tf_feature_names[i] for i in topic.argsort()[:-n_top_words - 1:-1]]
 
@@ -87,6 +89,24 @@ def get_KL(topic_words1, topic_words2):
 
     return scipy.stats.entropy(counts1, counts2)
 
+def get_my_text(dir_path, text_file_name):
+    mytext = ""
+    # load text materials
+    if not os.path.exists(f"{dir_path}/{text_file_name}.txt"):
+        with pdfplumber.open(f"{dir_path}/{text_file_name}.pdf") as pdf:
+            for page in pdf.pages:
+                text = page.extract_text()  # 提取文本
+                txt_file = open(f"{dir_path}/{text_file_name}.txt", mode='a', encoding='utf-8')
+                txt_file.write(text)
+                mytext += text
+    else:
+        with open(f'{dir_path}/{text_file_name}.txt') as f:
+            lines = f.readlines()
+            for line in lines:
+                line = line.replace("\n", "")
+                mytext += line
+    return mytext
+
 
 def extract_topic_words(dir_path, text_file_name, output_dir="topic_words"):
     # load from the cache
@@ -96,7 +116,7 @@ def extract_topic_words(dir_path, text_file_name, output_dir="topic_words"):
             topic_words = lines[0].split()
             return topic_words
 
-    mytext = ""
+    mytext = get_my_text(dir_path, text_file_name)
     # load text materials
     if not os.path.exists(f"{dir_path}/{text_file_name}.txt"):
         with pdfplumber.open(f"{dir_path}/{text_file_name}.pdf") as pdf:
@@ -123,24 +143,83 @@ def extract_topic_words(dir_path, text_file_name, output_dir="topic_words"):
     return topic_words
 
 
-if __name__ == '__main__':
+def get_topic_words_frequency(dir_path, text_file_name, topic_words):
+    '''
+    return the frequency of the topic words in the text
+    :param dir_path:
+    :param text_file_name:
+    :param topic_words:
+    :return:
+    '''
+    mytext = get_my_text(dir_path, text_file_name)
+    frequencies = {}
+    for topic_word in topic_words:
+        frequencies[topic_word] = mytext.count(topic_word)
+    return frequencies
+
+def output_frequency():
     ref_path = "ESG reports"
-    ref_file_name = "2023阿里巴巴ESG报告"
-    # ref_file_name = "2022腾讯ESG报告"
+    ref_file_name1 = "2023阿里巴巴ESG报告"
+    ref_file_name2 = "2022腾讯ESG报告"
+
+    frequency1 = get_topic_words_frequency(ref_path, ref_file_name1, extract_topic_words(ref_path, ref_file_name1))
+    frequency2 = get_topic_words_frequency(ref_path, ref_file_name2, extract_topic_words(ref_path, ref_file_name2))
+    frequency = {}
+    for key in frequency1.keys():
+        if key in frequency2.keys():
+            frequency[key] = frequency1[key] + frequency2[key]
+        else:
+            frequency[key] = frequency1[key]
+    for key in frequency2.keys():
+        if key not in frequency.keys():
+            frequency[key] = frequency2[key]
+    frequency = sorted(frequency.items(), key=lambda item: item[1], reverse=True)
+    # save the frequency
+    with open("frequency.txt", 'w') as f:
+        for key in frequency:
+            f.write(f'{key[0]} {key[1]} \n')
+
+    new_Text = ""
+    for key in frequency:
+        for count in range(key[1]):
+            new_Text += key[0] + " "
+    # word cloud to show the frequency
+    from wordcloud import WordCloud
+    import matplotlib.pyplot as plt
+    wc = WordCloud(
+        font_path="/System/Library/Fonts/PingFang.ttc",  # macos: # windows: C:\Windows\Fonts\msyh.ttc
+        background_color='white',  # 设置背景颜色
+        width=1000,  # 设置宽度
+        height=800,  # 设置高度
+        margin=2,  # 设置边缘
+        collocations=False
+    ).generate(new_Text)
+    plt.imshow(wc)
+    plt.axis("off")
+    plt.savefig("frequency.png")
+    plt.show()
+
+if __name__ == '__main__':
+
+
+    ref_path = "ESG reports"
+    ref_file_name1 = "2023阿里巴巴ESG报告"
+    ref_file_name2 = "2022腾讯ESG报告"
     material_path = "materials"
-    # material_file_name = "600008_20230413_首创环保2022年环境、社会及治理(ESG)暨社会责任报告"
-    # topic_words = extract_topic_words(material_path, material_file_name)
-    # exit()
+
+
     # all materials ready to be analyzed
     material_names = set()
     for material_name in os.listdir(material_path):
         material_names.add(Path(material_name).stem)
 
-    ref_topic_words = extract_topic_words(ref_path, ref_file_name)
+    ref_topic_words = extract_topic_words(ref_path, ref_file_name1)
+    # ref_topic_words = extract_topic_words(ref_path, ref_file_name2)
+
     failed_material_names = []
     KLs = []
     # # load the KL before
-    f = open(f"{ref_file_name}_KL.txt", 'w')
+    f = open(f"{ref_file_name1}_KL.txt", 'w')
     for material_name in material_names:
         print(f"processing {material_name}")
         try:
